@@ -62,6 +62,8 @@ func scrape(startUrl string, maxDuration time.Duration, emails chan string) {
 	}
 
 	collector.Wait()
+
+	close(emails)
 }
 
 func main() {
