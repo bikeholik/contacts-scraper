@@ -12,10 +12,15 @@ import (
 	"time"
 )
 
-func scrape(startUrl string, maxDuration time.Duration, emails chan string) {
-	// TODO move outside
-	r := regexp.MustCompile("[\\w]+@[\\w]+\\.[\\w]+(\\.[\\w]+)?")
+const RFC_MAIL_REGEXP = "(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|\"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*\")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\\])"
+const SIMPLE_MAIL_REGEXP = "[\\w]+@[\\w]+\\.[\\w]+(\\.[\\w]+)?"
+const MAIL_REGEXP = SIMPLE_MAIL_REGEXP
+
+func scrape(startUrl *url.URL, maxDuration time.Duration, emails chan string) {
+
+	mailRegexp := regexp.MustCompile(MAIL_REGEXP)
 	limitTime := time.Now().Add(maxDuration)
+
 	log.Println("Scraping will work until", limitTime)
 
 	collector := colly.NewCollector(
@@ -24,14 +29,14 @@ func scrape(startUrl string, maxDuration time.Duration, emails chan string) {
 		colly.DisallowedDomains("www.facebook.com", "twitter.com"),
 		colly.DisallowedURLFilters(regexp.MustCompile(".*facebook.com")),
 		colly.CacheDir("./.cache"),
-		colly.MaxDepth(8),
+		colly.MaxDepth(64),
 	)
 
 	_ = collector.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 2})
 
 	collector.OnResponse(func(response *colly.Response) {
 		log.Println("Parsing", response.Request.URL)
-		all := r.FindAll(response.Body, -1)
+		all := mailRegexp.FindAll(response.Body, -1)
 		for _, s := range all {
 			emails <- string(s)
 		}
@@ -53,12 +58,15 @@ func scrape(startUrl string, maxDuration time.Duration, emails chan string) {
 
 	collector.OnRequest(func(r *colly.Request) {
 		log.Println("Visiting", r.URL)
+		if !strings.Contains(r.URL.Host, startUrl.Host) {
+			collector.DisallowedURLFilters = append(collector.DisallowedURLFilters, regexp.MustCompile(".*"+r.URL.Host))
+		}
 	})
 
-	err := collector.Visit(startUrl)
+	err := collector.Visit(startUrl.String())
 
 	if err != nil {
-		log.Fatalln("Visiting", startUrl, "failed:", err)
+		log.Fatalln("Visiting", startUrl.String(), "failed:", err)
 	}
 
 	collector.Wait()
@@ -92,7 +100,7 @@ func main() {
 
 	ch := make(chan string)
 
-	go scrape(u.String(), maxDuration, ch)
+	go scrape(u, maxDuration, ch)
 
 	emails := mapset.NewSet()
 
