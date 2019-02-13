@@ -53,13 +53,6 @@ func scrape(startUrl *url.URL, maxDepth int, maxDuration time.Duration, emails c
 			link := e.Attr("href")
 			if strings.HasPrefix(link, "http") {
 				r := e.Request
-				if r.URL.Host != startUrl.Host {
-					r.Depth = maxDepth
-					if r.Depth == 1 {
-						r.Depth -= 2
-					}
-				}
-				//err := r.collector.scrape(r.AbsoluteURL(link), "GET", d, nil, r.Ctx, nil, true)
 				err := r.Visit(link)
 				if err != nil {
 					log.Println("Visiting", link, "failed:", err)
@@ -72,9 +65,9 @@ func scrape(startUrl *url.URL, maxDepth int, maxDuration time.Duration, emails c
 
 	collector.OnRequest(func(r *colly.Request) {
 		log.Println("Visiting", r.URL)
-		//if !strings.Contains(r.URL.Host, startUrl.Host) {
-		//	collector.DisallowedURLFilters = append(collector.DisallowedURLFilters, regexp.MustCompile(".*"+r.URL.Host))
-		//}
+		if r.URL.Host != startUrl.Host && r.Depth > 2 {
+			collector.DisallowedURLFilters = append(collector.DisallowedURLFilters, regexp.MustCompile(".*"+r.URL.Host))
+		}
 	})
 
 	err := collector.Visit(startUrl.String())
@@ -95,7 +88,7 @@ func main() {
 
 	optStartUrl := flag.String("url", "http://dodekstudio.com/contact-me.php?lang=es", "url from which to start")
 	optMaxDuration := flag.String("max-duration", "30s", "max scraping duration")
-	optDepth := flag.Int("max-depth", 5, "max depth on main page")
+	optDepth := flag.Int("max-depth", 16, "max depth on main page")
 
 	flag.Parse()
 
