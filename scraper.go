@@ -22,7 +22,7 @@ const RFC_MAIL_REGEXP = "(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?
 const SIMPLE_MAIL_REGEXP = "[\\w]+@[\\w]+\\.[\\w]+(\\.[\\w]+)?"
 const MAIL_REGEXP = SIMPLE_MAIL_REGEXP
 
-func scrape(startUrl *url.URL, maxDuration time.Duration, emails chan FoundEmail) {
+func scrape(startUrl *url.URL, maxDepth int, maxDuration time.Duration, emails chan FoundEmail) {
 
 	mailRegexp := regexp.MustCompile(MAIL_REGEXP)
 	limitTime := time.Now().Add(maxDuration)
@@ -35,7 +35,7 @@ func scrape(startUrl *url.URL, maxDuration time.Duration, emails chan FoundEmail
 		colly.DisallowedDomains("www.facebook.com", "twitter.com"),
 		colly.DisallowedURLFilters(regexp.MustCompile(".*facebook.com")),
 		colly.CacheDir("./.cache"),
-		colly.MaxDepth(64),
+		colly.MaxDepth(maxDepth),
 	)
 
 	_ = collector.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 2})
@@ -50,9 +50,17 @@ func scrape(startUrl *url.URL, maxDuration time.Duration, emails chan FoundEmail
 
 	collector.OnHTML("a[href]", func(e *colly.HTMLElement) {
 		if time.Now().Before(limitTime) {
-			link := e.Request.AbsoluteURL(e.Attr("href"))
+			link := e.Attr("href")
 			if strings.HasPrefix(link, "http") {
-				err := e.Request.Visit(link)
+				r := e.Request
+				if r.URL.Host != startUrl.Host {
+					r.Depth = maxDepth
+					if r.Depth == 1 {
+						r.Depth -= 2
+					}
+				}
+				//err := r.collector.scrape(r.AbsoluteURL(link), "GET", d, nil, r.Ctx, nil, true)
+				err := r.Visit(link)
 				if err != nil {
 					log.Println("Visiting", link, "failed:", err)
 				}
@@ -64,9 +72,9 @@ func scrape(startUrl *url.URL, maxDuration time.Duration, emails chan FoundEmail
 
 	collector.OnRequest(func(r *colly.Request) {
 		log.Println("Visiting", r.URL)
-		if !strings.Contains(r.URL.Host, startUrl.Host) {
-			collector.DisallowedURLFilters = append(collector.DisallowedURLFilters, regexp.MustCompile(".*"+r.URL.Host))
-		}
+		//if !strings.Contains(r.URL.Host, startUrl.Host) {
+		//	collector.DisallowedURLFilters = append(collector.DisallowedURLFilters, regexp.MustCompile(".*"+r.URL.Host))
+		//}
 	})
 
 	err := collector.Visit(startUrl.String())
@@ -87,6 +95,7 @@ func main() {
 
 	optStartUrl := flag.String("url", "http://dodekstudio.com/contact-me.php?lang=es", "url from which to start")
 	optMaxDuration := flag.String("max-duration", "30s", "max scraping duration")
+	optDepth := flag.Int("max-depth", 5, "max depth on main page")
 
 	flag.Parse()
 
@@ -109,7 +118,7 @@ func main() {
 
 	ch := make(chan FoundEmail)
 
-	go scrape(u, maxDuration, ch)
+	go scrape(u, *optDepth, maxDuration, ch)
 
 	emails := mapset.NewSet()
 
