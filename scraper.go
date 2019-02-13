@@ -22,6 +22,8 @@ const RFC_MAIL_REGEXP = "(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?
 const SIMPLE_MAIL_REGEXP = "[\\w]+@[\\w]+\\.[\\w]+(\\.[\\w]+)?"
 const MAIL_REGEXP = SIMPLE_MAIL_REGEXP
 
+var DISALLOWED_EXTENSIONS = []string{".png", ".gif", ".jpg", ".jpeg"}
+
 func scrape(startUrl *url.URL, maxDepth int, maxDuration time.Duration, emails chan FoundEmail) {
 
 	mailRegexp := regexp.MustCompile(MAIL_REGEXP)
@@ -81,6 +83,15 @@ func scrape(startUrl *url.URL, maxDepth int, maxDuration time.Duration, emails c
 	close(emails)
 }
 
+func shouldBeIgnored(email string) bool {
+	for _, s := range DISALLOWED_EXTENSIONS {
+		if s == email {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 
 	f, _ := os.OpenFile("scraper.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -116,7 +127,7 @@ func main() {
 	emails := mapset.NewSet()
 
 	for email := range ch {
-		if emails.Add(email.email) {
+		if emails.Add(email.email) && !shouldBeIgnored(email.email) {
 			fmt.Printf("%s at %s\n", email.email, email.sourceUrl)
 		}
 	}
