@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"github.com/deckarep/golang-set"
 	"github.com/gocolly/colly"
 	"log"
@@ -12,11 +13,16 @@ import (
 	"time"
 )
 
+type FoundEmail struct {
+	email     string
+	sourceUrl string
+}
+
 const RFC_MAIL_REGEXP = "(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|\"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*\")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\\])"
 const SIMPLE_MAIL_REGEXP = "[\\w]+@[\\w]+\\.[\\w]+(\\.[\\w]+)?"
 const MAIL_REGEXP = SIMPLE_MAIL_REGEXP
 
-func scrape(startUrl *url.URL, maxDuration time.Duration, emails chan string) {
+func scrape(startUrl *url.URL, maxDuration time.Duration, emails chan FoundEmail) {
 
 	mailRegexp := regexp.MustCompile(MAIL_REGEXP)
 	limitTime := time.Now().Add(maxDuration)
@@ -38,7 +44,7 @@ func scrape(startUrl *url.URL, maxDuration time.Duration, emails chan string) {
 		log.Println("Parsing", response.Request.URL)
 		all := mailRegexp.FindAll(response.Body, -1)
 		for _, s := range all {
-			emails <- string(s)
+			emails <- FoundEmail{email: string(s), sourceUrl: response.Request.URL.String()}
 		}
 	})
 
@@ -76,6 +82,9 @@ func scrape(startUrl *url.URL, maxDuration time.Duration, emails chan string) {
 
 func main() {
 
+	f, _ := os.OpenFile("scraper.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	log.SetOutput(f)
+
 	optStartUrl := flag.String("url", "http://dodekstudio.com/contact-me.php?lang=es", "url from which to start")
 	optMaxDuration := flag.String("max-duration", "30s", "max scraping duration")
 
@@ -98,15 +107,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	ch := make(chan string)
+	ch := make(chan FoundEmail)
 
 	go scrape(u, maxDuration, ch)
 
 	emails := mapset.NewSet()
 
 	for email := range ch {
-		if emails.Add(email) {
-			println("Found: ", email)
+		if emails.Add(email.email) {
+			fmt.Printf("%s at %s\n", email.email, email.sourceUrl)
 		}
 	}
 }
