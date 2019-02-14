@@ -84,8 +84,10 @@ func scrape(startUrl *url.URL, maxDepth int, maxDuration time.Duration, emails c
 }
 
 func shouldBeIgnored(email string) bool {
+	chunks := strings.Split(email, ".")
+	ext := strings.ToLower(chunks[len(chunks)-1])
 	for _, s := range DISALLOWED_EXTENSIONS {
-		if s == email {
+		if s == ext {
 			return true
 		}
 	}
