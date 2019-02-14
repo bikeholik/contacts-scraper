@@ -19,7 +19,7 @@ type FoundEmail struct {
 }
 
 const RFC_MAIL_REGEXP = "(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|\"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*\")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\\])"
-const SIMPLE_MAIL_REGEXP = "[\\w]+@[\\w]+\\.[\\w]+(\\.[\\w]+)?"
+const SIMPLE_MAIL_REGEXP = "[\\w]+@[\\w]+\\.[\\w]{2,}(\\.[\\w]{2,})?"
 const MAIL_REGEXP = SIMPLE_MAIL_REGEXP
 
 var DISALLOWED_EXTENSIONS = []string{".png", ".gif", ".jpg", ".jpeg"}
@@ -46,7 +46,7 @@ func scrape(startUrl *url.URL, maxDepth int, maxDuration time.Duration, emails c
 		log.Println("Parsing", response.Request.URL)
 		all := mailRegexp.FindAll(response.Body, -1)
 		for _, s := range all {
-			emails <- FoundEmail{email: string(s), sourceUrl: response.Request.URL.String()}
+			emails <- FoundEmail{email: strings.ToLower(string(s)), sourceUrl: response.Request.URL.String()}
 		}
 	})
 
@@ -65,6 +65,10 @@ func scrape(startUrl *url.URL, maxDepth int, maxDuration time.Duration, emails c
 		}
 	})
 
+	collector.OnError(func(response *colly.Response, e error) {
+		log.Printf("Visting %s failed with %s\n", response.Request.URL, e)
+	})
+
 	collector.OnRequest(func(r *colly.Request) {
 		log.Println("Visiting", r.URL)
 		if r.URL.Host != startUrl.Host && r.Depth > 2 {
@@ -75,7 +79,7 @@ func scrape(startUrl *url.URL, maxDepth int, maxDuration time.Duration, emails c
 	err := collector.Visit(startUrl.String())
 
 	if err != nil {
-		log.Fatalln("Visiting", startUrl.String(), "failed:", err)
+		log.Fatalf("Visiting %s failed with %s\n", startUrl.String(), err)
 	}
 
 	collector.Wait()
@@ -85,7 +89,7 @@ func scrape(startUrl *url.URL, maxDepth int, maxDuration time.Duration, emails c
 
 func shouldBeIgnored(email string) bool {
 	chunks := strings.Split(email, ".")
-	ext := strings.ToLower(chunks[len(chunks)-1])
+	ext := chunks[len(chunks)-1]
 	for _, s := range DISALLOWED_EXTENSIONS {
 		if s == ext {
 			return true
