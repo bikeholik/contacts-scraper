@@ -66,13 +66,16 @@ func scrape(startUrl *url.URL, maxDepth int, maxDuration time.Duration, emails c
 	})
 
 	collector.OnError(func(response *colly.Response, e error) {
-		log.Printf("Visting %s failed with %s\n", response.Request.URL, e)
+		log.Printf("Visting %s failed with %d:%s\n", response.Request.URL, response.StatusCode, e)
+		if response.StatusCode == 403 {
+			blockDomain(collector, response.Request)
+		}
 	})
 
 	collector.OnRequest(func(r *colly.Request) {
 		log.Println("Visiting", r.URL)
 		if r.URL.Host != startUrl.Host && r.Depth > 2 {
-			collector.DisallowedURLFilters = append(collector.DisallowedURLFilters, regexp.MustCompile(".*"+r.URL.Host))
+			blockDomain(collector, r)
 		}
 	})
 
@@ -85,6 +88,10 @@ func scrape(startUrl *url.URL, maxDepth int, maxDuration time.Duration, emails c
 	collector.Wait()
 
 	close(emails)
+}
+
+func blockDomain(collector *colly.Collector, r *colly.Request) {
+	collector.DisallowedURLFilters = append(collector.DisallowedURLFilters, regexp.MustCompile(".*"+r.URL.Host))
 }
 
 func shouldBeIgnored(email string) bool {
